@@ -24,6 +24,22 @@ const syncRateLimit = rateLimit(
     'Sync was run too recently. Please wait a minute and try again.'
 );
 
+function matchProducts(hubProducts, shopifyProducts) {
+    const results = hubProducts.map((hubProduct) => {
+        const shopifyProduct = shopifyProducts.find((shopifyProduct) =>
+            (hubProduct.shopify_inventory_item_id &&
+                shopifyProduct.inventory_item_id === hubProduct.shopify_inventory_item_id) ||
+            (hubProduct.sku &&
+                shopifyProduct.sku === hubProduct.sku)
+        );
+
+        return [hubProduct.id,
+        shopifyProduct ? 'matched' : 'unmatched']
+    });
+
+    return Object.fromEntries(results);
+}
+
 router.get('/', asyncRoute(async (req, res) => {
     const sql =
         'SELECT p.*, m.name AS manufacturer_name, rt.threshold ' +
@@ -34,8 +50,27 @@ router.get('/', asyncRoute(async (req, res) => {
         'LIMIT 1000';
 
     const result = await query(sql);
+    const hubProducts = result.rows;
+    let shopifyProducts;
+    try {
+        shopifyProducts = await shopify.getStockLevels();
+    } catch (err) {
+        console.error('Unable to retrieve Shopify products: ' + err.message);
+        const products = hubProducts.map((product) => ({
+            ...product,
+            shopify_match: null
+        }));
+        return res.json({ products: products });
+    }
 
-    res.json({ products: result.rows });
+    const matches = matchProducts(hubProducts, shopifyProducts);
+
+    const products = hubProducts.map((product) => ({
+        ...product,
+        shopify_match: matches[product.id]
+    }));
+
+    res.json({ products: products });
 }));
 
 router.get('/:id', asyncRoute(async (req, res) => {
@@ -116,11 +151,12 @@ router.post('/sync-shopify', syncRateLimit, asyncRoute(async (req, res) => {
 
         try {
             await query(
-                'INSERT INTO products (sku, name, shopify_inventory_item_id) ' +
-                'VALUES ($1, $2, $3) ' +
+                'INSERT INTO products (sku, name, shopify_inventory_item_id, last_synced_at) ' +
+                'VALUES ($1, $2, $3, NOW()) ' +
                 'ON CONFLICT (sku) DO UPDATE SET ' +
                 '    name = EXCLUDED.name, ' +
-                '    shopify_inventory_item_id = COALESCE(products.shopify_inventory_item_id, EXCLUDED.shopify_inventory_item_id)',
+                '    shopify_inventory_item_id = COALESCE(products.shopify_inventory_item_id, EXCLUDED.shopify_inventory_item_id), ' +
+                '    last_synced_at = EXCLUDED.last_synced_at',
                 [item.sku, item.name, item.inventory_item_id || null]
             );
             synced += 1;

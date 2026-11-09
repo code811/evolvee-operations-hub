@@ -169,7 +169,8 @@
     "unit_cost": 14.00,
     "stock_on_hand": 34,
     "reorder_level": 50,
-    "image": "https://placehold.co/300x300?text=Serum"
+    "image": "https://placehold.co/300x300?text=Serum",
+    "inventory_item_id": "INV_01"
   },
   {
     "sku": "ER-OIL-002",
@@ -179,7 +180,8 @@
     "unit_cost": 11.00,
     "stock_on_hand": 120,
     "reorder_level": 40,
-    "image": "https://placehold.co/300x300?text=Face+Oil"
+    "image": "https://placehold.co/300x300?text=Face+Oil",
+    "inventory_item_id": "INV_02"
   },
   {
     "sku": "ER-CRM-003",
@@ -189,7 +191,8 @@
     "unit_cost": 13.00,
     "stock_on_hand": 58,
     "reorder_level": 60,
-    "image": "https://placehold.co/300x300?text=Day+Cream"
+    "image": "https://placehold.co/300x300?text=Day+Cream",
+    "inventory_item_id": "INV_03"
   },
   {
     "sku": "ER-CRM-004",
@@ -199,7 +202,8 @@
     "unit_cost": 16.00,
     "stock_on_hand": 210,
     "reorder_level": 40,
-    "image": "https://placehold.co/300x300?text=Night+Cream"
+    "image": "https://placehold.co/300x300?text=Night+Cream",
+    "inventory_item_id": "INV_04"
   },
   {
     "sku": "ER-BLM-005",
@@ -209,7 +213,8 @@
     "unit_cost": 3.00,
     "stock_on_hand": 95,
     "reorder_level": 100,
-    "image": "https://placehold.co/300x300?text=Lip+Balm"
+    "image": "https://placehold.co/300x300?text=Lip+Balm",
+    "inventory_item_id": "INV_05"
   },
   {
     "sku": "ER-MSK-006",
@@ -219,7 +224,8 @@
     "unit_cost": 12.00,
     "stock_on_hand": 77,
     "reorder_level": 30,
-    "image": "https://placehold.co/300x300?text=Detox+Mask"
+    "image": "https://placehold.co/300x300?text=Detox+Mask",
+    "inventory_item_id": "INV_06"
   },
   {
     "sku": "ER-TNR-007",
@@ -229,7 +235,8 @@
     "unit_cost": 7.00,
     "stock_on_hand": 160,
     "reorder_level": 50,
-    "image": "https://placehold.co/300x300?text=Toner"
+    "image": "https://placehold.co/300x300?text=Toner",
+    "inventory_item_id": "INV_07"
   },
   {
     "sku": "ER-KIT-008",
@@ -239,7 +246,8 @@
     "unit_cost": 35.00,
     "stock_on_hand": 12,
     "reorder_level": 20,
-    "image": "https://placehold.co/300x300?text=Ritual+Kit"
+    "image": "https://placehold.co/300x300?text=Ritual+Kit",
+    "inventory_item_id": "INV_08"
   }
 ],
   "reviews": [
