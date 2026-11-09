@@ -54,12 +54,14 @@ CREATE TABLE IF NOT EXISTS products (
     shopify_inventory_item_id TEXT,
     manufacturer_id INTEGER REFERENCES manufacturers(id) ON DELETE SET NULL,
     unit_cost       NUMERIC(10,2),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_synced_at  TIMESTAMPTZ
 );
 
 -- For databases created before the column existed:
 ALTER TABLE products ADD COLUMN IF NOT EXISTS shopify_inventory_item_id TEXT;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,2);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS reorder_thresholds (
     id         SERIAL PRIMARY KEY,

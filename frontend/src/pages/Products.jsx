@@ -5,6 +5,13 @@ import { useTableView, SortHeader, SearchBox, onEnter } from '../ui.jsx';
 
 const EMPTY_FORM = { sku: '', name: '', manufacturer_id: '', threshold: '', unit_cost: '' };
 
+const MATCH_STATES = [
+    { value: 'matched', label: 'Matched', className: 'ok' },
+    { value: 'unmatched', label: 'Unmatched', className: 'warn' },
+];
+
+const UNKNOWN_MATCH = { label: 'Unable to Verify', className: 'low' }
+
 export default function Products() {
     const [products, setProducts] = useState(null);
     const [manufacturers, setManufacturers] = useState([]);
@@ -150,7 +157,7 @@ export default function Products() {
             const r = await api('/products/sync-shopify', { method: 'POST' });
             const skippedNote = r.skipped ? `, ${r.skipped} skipped` : '';
             setSyncMsg(`Synced ${r.synced} of ${r.total} Shopify items${skippedNote}.`);
-            load();
+            await load();
         } catch (e) {
             setSyncMsg('');
             setError(e.message);
@@ -191,7 +198,15 @@ export default function Products() {
         ));
     }
 
+    function formatDate(value) {
+        return new Date(value).toLocaleString('en-GB');
+    }
+
     function renderRow(product) {
+        const matchState =
+            MATCH_STATES.find(state => state.value === product.shopify_match)
+            ?? UNKNOWN_MATCH;
+
         return (
             <tr key={product.id}>
                 {writable && (
@@ -206,6 +221,12 @@ export default function Products() {
                 )}
                 <td>{product.sku}</td>
                 <td><Link to={`/products/${product.id}`}>{product.name}</Link></td>
+                <td>
+                    <span className={`pill ${matchState.className}`}>
+                        {matchState.label}
+                    </span>
+                </td>
+                <td>{product.last_synced_at ? formatDate(product.last_synced_at) : 'Never Recorded'}</td>
                 <td>
                     <select
                         value={product.manufacturer_id || ''}
@@ -361,6 +382,20 @@ export default function Products() {
                                 )}
                                 <SortHeader label="SKU / Item ID" sortKey="sku" sort={sort} toggleSort={toggleSort} />
                                 <SortHeader label="Product" sortKey="name" sort={sort} toggleSort={toggleSort} />
+                                <SortHeader label="Shopify Match" sortKey="shopify_match" sort={sort} toggleSort={toggleSort} />
+                                <SortHeader
+                                    label={
+                                        <span
+                                            style={{ whiteSpace: 'nowrap' }}
+                                            title="Last synced records the latest successful product sync to the Hub and may use cached Shopify data."
+                                        >
+                                            Last Synced to Hub ⓘ
+                                        </span>
+                                    }
+                                    sortKey="last_synced_at"
+                                    sort={sort}
+                                    toggleSort={toggleSort}
+                                />
                                 <SortHeader label="Manufacturer" sortKey="manufacturer_name" sort={sort} toggleSort={toggleSort} />
                                 <SortHeader label="Reorder threshold" sortKey="threshold" sort={sort} toggleSort={toggleSort} className="num" />
                                 <SortHeader label="Unit cost ($)" sortKey="unit_cost" sort={sort} toggleSort={toggleSort} className="num" />
@@ -369,7 +404,7 @@ export default function Products() {
                         </thead>
                         <tbody>
                             {view.length === 0 ? (
-                                <tr><td colSpan={writable ? 7 : 5} className="empty">No products match “{query}”.</td></tr>
+                                <tr><td colSpan={writable ? 9 : 7} className="empty">No products match “{query}”.</td></tr>
                             ) : view.map(renderRow)}
                         </tbody>
                     </table>
