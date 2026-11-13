@@ -21,17 +21,29 @@ export default function Alerts() {
     const [selectedAlert, setSelectedAlert] = useState(null);
     const [reorder, setReorder] = useState({ quantity_ordered: '', notes: '' });
     const [operation, setOperation] = useState('idle');
+    const [details, setDetails] = useState(null);
+    const [check, setCheck] = useState({ status: '', retrieved_at: null })
 
+    const busy = operation !== 'idle';
     const loadingSuggestion = operation === 'suggesting';
     const submitting = operation === 'submitting';
-    const busy = operation !== 'idle';
     const checking = operation === 'checking';
 
     function load() {
         // Guard against a stale response landing after a newer request (e.g. filter changed mid-flight).
         const seq = ++loadSeq.current;
         api(`/alerts${filter ? `?status=${filter}` : ''}`)
-            .then((data) => { if (seq === loadSeq.current) setAlerts(data.alerts); })
+            .then((data) => {
+                if (seq === loadSeq.current) {
+                    setAlerts(data.alerts);
+                    setSelectedAlert(current =>
+                        current
+                            ? data.alerts.find(alert => alert.id === current.id) ?? null
+                            : null
+                    );
+                    setCheck({ status: data.inventory_status, retrieved_at: data.retrieved_at ?? null });
+                }
+            })
             .catch((e) => { if (seq === loadSeq.current) setError(e.message); });
     }
 
@@ -100,7 +112,8 @@ export default function Alerts() {
 
             setNotice(
                 `Checked ${result.checked} SKUs / item IDs against Shopify — ` +
-                `${result.alerts_created} new alert${plural} created.`
+                `${result.alerts_created} new alert${plural} created. ` +
+                'Updated latest stock details.'
             );
 
             load();
@@ -120,6 +133,20 @@ export default function Alerts() {
 
     function formatDate(value) {
         return new Date(value).toLocaleDateString('en-GB');
+    }
+
+    function formatTimestamp(value) {
+        return value == null
+            ? 'Unavailable'
+            : new Date(value).toLocaleString('en-GB');
+    }
+
+    function openDetails(alert) {
+        if (details?.id !== alert.id) {
+            setDetails(alert);
+        } else {
+            setDetails(null);
+        }
     }
 
     async function openReorder(alert) {
@@ -161,9 +188,15 @@ export default function Alerts() {
             return;
         }
 
-        if (selectedAlert.stock_level + quantity_ordered <= selectedAlert.threshold) {
+        if ((selectedAlert.latest_stock == null) ||
+            (selectedAlert.latest_threshold == null)) {
+            setError('Current stock or threshold is unavailable.');
+            return;
+        }
+
+        if (selectedAlert.latest_stock + quantity_ordered <= selectedAlert.latest_threshold) {
             if (!window.confirm(
-                'Based on this alert’s recorded stock, receiving this quantity would leave inventory at or below the recorded low-stock threshold.\n' +
+                'Based on the latest recorded stock, receiving this quantity would leave inventory at or below the recorded low-stock threshold.\n' +
                 'You can still log this reorder.\n' +
                 'If inventory remains low after the alert is resolved, a later stock check may generate another alert.\n' +
                 'Continue?')) {
@@ -200,6 +233,12 @@ export default function Alerts() {
 
             {error && <div className="banner error">{error}</div>}
             {notice && <div className="banner notice">{notice}</div>}
+
+            {check.status === 'unavailable' && (
+                <div className="banner notice">
+                    Current inventory is unavailable. Original alert details remain available.
+                </div>
+            )}
 
             {writable && (
                 <p>
@@ -269,6 +308,17 @@ export default function Alerts() {
                 </div>
             </div>
 
+            {details && (
+                <div className="tile">
+                    <h2>{details.product_name} Details</h2>
+                    <p>Alert ID: {details.id}</p>
+                    <p>Manufacturer: {details.manufacturer}</p>
+                    <p>Triggered Stock: {details.stock_level}</p>
+                    <p>Triggered Threshold: {details.threshold}</p>
+                    <p>Latest Inventory Retrieved at: {formatTimestamp(check.retrieved_at)}</p>
+                </div>
+            )}
+
             {alerts === null ? (
                 <p className="empty">Loading…</p>
             ) : (
@@ -279,8 +329,8 @@ export default function Alerts() {
                                 <SortHeader label="Raised" sortKey="triggered_at" sort={sort} toggleSort={toggleSort} />
                                 <SortHeader label="SKU / Item ID" sortKey="sku" sort={sort} toggleSort={toggleSort} />
                                 <SortHeader label="Product" sortKey="product_name" sort={sort} toggleSort={toggleSort} />
-                                <SortHeader label="Stock" sortKey="stock_level" sort={sort} toggleSort={toggleSort} className="num" />
-                                <SortHeader label="Threshold" sortKey="threshold" sort={sort} toggleSort={toggleSort} className="num" />
+                                <SortHeader label="Latest Stock" sortKey="latest_stock" sort={sort} toggleSort={toggleSort} className="num" />
+                                <SortHeader label="Latest Threshold" sortKey="latest_threshold" sort={sort} toggleSort={toggleSort} className="num" />
                                 <SortHeader label="Manufacturer" sortKey="manufacturer" sort={sort} toggleSort={toggleSort} />
                                 <SortHeader label="Status" sortKey="status" sort={sort} toggleSort={toggleSort} />
                                 <th />
@@ -293,14 +343,24 @@ export default function Alerts() {
                                 </td></tr>
                             ) : view.map((alert) => (
                                 <tr key={alert.id}>
-                                    <td>{formatDate(alert.triggered_at)}</td>
+                                    <td>
+                                        <button
+                                            className="link"
+                                            onClick={() => openDetails(alert)}
+                                        >
+                                            {formatDate(alert.triggered_at)}
+                                        </button>
+                                    </td>
                                     <td>{alert.sku}</td>
                                     <td>{alert.product_name}</td>
-                                    <td className="num">{alert.stock_level}</td>
-                                    <td className="num">{alert.threshold}</td>
+                                    <td className="num">{alert.latest_stock ?? '-'}</td>
+                                    <td className="num">{alert.latest_threshold ?? '-'}</td>
                                     <td>{alert.manufacturer || '—'}</td>
                                     <td>
-                                        <span className={`pill ${statusClass(alert.status)}`}>
+                                        <span
+                                            className={`pill ${statusClass(alert.status)}`}
+                                            style={{ whiteSpace: 'nowrap' }}
+                                        >
                                             {STATUS_FILTERS.find(f => f.value === alert.status)?.label ?? alert.status}
                                         </span>
                                     </td>
