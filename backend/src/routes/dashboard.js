@@ -12,7 +12,11 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/inventory', requirePermission('inventory'), asyncRoute(async (req, res) => {
-    const stock = await shopify.getStockLevels();
+    const { items: stock, retrieved_at } = await shopify.getStockLevels();
+
+    if (retrieved_at == null) {
+        return res.status(503).json({ error: 'Current inventory is unavailable.' });
+    }
 
     const thresholdResult = await query(
         'SELECT p.sku, p.shopify_inventory_item_id, rt.threshold ' +
@@ -77,11 +81,18 @@ router.get('/sales', requirePermission('sales'), asyncRoute(async (req, res) => 
 }));
 
 router.get('/product-performance', requirePermission('revenue'), asyncRoute(async (req, res) => {
-    const [sales, stock, costResult] = await Promise.all([
+    const [sales, inventory, costResult] = await Promise.all([
         shopify.getSalesOverview(),
-        shopify.getStockLevels(),
+        shopify.getStockLevels()
+            .catch(err => {
+                console.error('Product-performance inventory unavailable:', err.message);
+                return { items: [], retrieved_at: null};
+            }),
         query('SELECT sku, unit_cost FROM products WHERE unit_cost IS NOT NULL')
     ]);
+
+    const stock = inventory.items;
+    const inventoryStatus = inventory.retrieved_at == null ? 'unavailable' : 'available';
 
     // Build lookup maps so we can merge cost and stock data with sales per SKU.
     const costBySku = {};
@@ -147,7 +158,7 @@ router.get('/product-performance', requirePermission('revenue'), asyncRoute(asyn
         return b.revenue_30d - a.revenue_30d;
     });
 
-    res.json({ products: rows });
+    res.json({ products: rows, inventory_status: inventoryStatus });
 }));
 
 router.get('/customers', requirePermission('customers'), asyncRoute(async (req, res) => {

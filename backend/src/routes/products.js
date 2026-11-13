@@ -53,7 +53,13 @@ router.get('/', asyncRoute(async (req, res) => {
     const hubProducts = result.rows;
     let shopifyProducts;
     try {
-        shopifyProducts = await shopify.getStockLevels();
+        const inventory = await shopify.getStockLevels();
+
+        if (inventory.retrieved_at == null) {
+            throw new Error('Current inventory is unavailable.');
+        }
+
+        shopifyProducts = inventory.items;
     } catch (err) {
         console.error('Unable to retrieve Shopify products: ' + err.message);
         const products = hubProducts.map((product) => ({
@@ -97,7 +103,7 @@ router.get('/:id', asyncRoute(async (req, res) => {
 
     // Fetch everything needed for the detail view in parallel.
     const [stock, sales, trend, reviews, reorderHistory, productionRuns] = await Promise.all([
-        safe(shopify.getStockLevels(), [], 'stock'),
+        safe(shopify.getStockLevels().then(result => result.items), [], 'stock'),
         safe(shopify.getSalesOverview(), [], 'sales'),
         safe(shopify.getSalesTrend(), {}, 'trend'),
         safe(shopifyReviews.getReviews(), [], 'reviews'),
@@ -141,7 +147,16 @@ router.get('/:id', asyncRoute(async (req, res) => {
 }));
 
 router.post('/sync-shopify', syncRateLimit, asyncRoute(async (req, res) => {
-    const stock = await shopify.getStockLevels();
+    let inventory;
+    try {
+        inventory = await shopify.getStockLevels();
+        if (inventory.retrieved_at == null) throw new Error('Shopify inventory unavailable');
+        if (!Array.isArray(inventory.items)) throw new Error('Unexpected inventory response');
+    } catch (err) {
+        return res.status(503).json({ error: `Unable to sync products because Shopify inventory is unavailable.` });
+    }
+
+    const stock = inventory.items;
 
     let synced = 0;
     let skipped = 0;

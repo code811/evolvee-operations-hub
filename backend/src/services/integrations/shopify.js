@@ -268,7 +268,10 @@ async function getStockLevels() {
 
     return withSync('shopify', mode, async () => {
         if (mode === 'sample') {
-            return sample.inventory;
+            return {
+                items: sample.inventory,
+                retrieved_at: new Date().toISOString()
+            };
         }
 
         const products = await fetchAllPages(
@@ -344,7 +347,13 @@ async function getStockLevels() {
             }
         }
 
-        return Object.values(bySku);
+        return {
+            items: Object.values(bySku),
+            retrieved_at: new Date().toISOString()
+        };
+    }, {
+        items: [],
+        retrieved_at: null
     });
 }
 

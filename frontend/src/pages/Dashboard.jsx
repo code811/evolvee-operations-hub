@@ -245,13 +245,13 @@ function useModule(path, enabled, refreshMs) {
 }
 
 // Renders loading and error states; otherwise passes data to children.
-function Body({ state, children }) {
+function Body({ state, children, errorMessage }) {
     if (state.loading) return <p className="empty">Loading…</p>;
 
     if (state.error) {
         return (
             <div className="banner error">
-                Couldn't load this module: {state.error}
+                {errorMessage || `Couldn\'t load this module: ${state.error}` }
             </div>
         );
     }
@@ -422,7 +422,10 @@ export default function Dashboard() {
     if (canAccess('inventory')) {
         defs.push({ id: 'inventory', el: (
                     <Tile title="Stock levels" source="Shopify">
-                        <Body state={inventory}>
+                        <Body
+                            state={inventory}
+                            errorMessage="Stock levels could not be loaded. Please try again."
+                        >
                             {(data) => (
                                 <DataTable
                                     rows={data.items}
@@ -502,21 +505,29 @@ export default function Dashboard() {
                     <Tile title="Product performance — last 30 days" source="Shopify" wide>
                         <Body state={productPerf}>
                             {(data) => (
-                                <DataTable
-                                    rows={data.products}
-                                    filename="product-performance.csv"
-                                    keyField="sku"
-                                    copyKey="sku"
-                                    columns={[
-                                        { label: 'SKU', key: 'sku' },
-                                        { label: 'Product', key: 'title' },
-                                        { label: 'Units (30d)', key: 'units_sold_30d', num: true },
-                                        { label: 'Revenue (30d)', key: 'revenue_30d', num: true, render: (p) => formatGBP(p.revenue_30d) },
-                                        { label: 'Potential Margin %', key: 'profit_margin', num: true, render: (p) => (p.profit_margin != null ? `${Number(p.profit_margin).toFixed(2)}%` : '—') },
-                                        { label: 'Turnover', key: 'turnover', num: true, render: (p) => (p.turnover != null ? p.turnover : '—') },
-                                        { label: 'Sell-through %', key: 'sell_through', num: true, render: (p) => (p.sell_through != null ? `${p.sell_through}%` : '—') },
-                                    ]}
-                                />
+                                <>
+                                    {data.inventory_status === 'unavailable' && (
+                                        <div className="banner notice">
+                                            Inventory is unavailable. Inventory-dependent metrics cannot be calculated;
+                                            any available sales data is shown below.
+                                        </div>
+                                    )}
+                                    <DataTable
+                                        rows={data.products}
+                                        filename="product-performance.csv"
+                                        keyField="sku"
+                                        copyKey="sku"
+                                        columns={[
+                                            { label: 'SKU', key: 'sku' },
+                                            { label: 'Product', key: 'title' },
+                                            { label: 'Units (30d)', key: 'units_sold_30d', num: true },
+                                            { label: 'Revenue (30d)', key: 'revenue_30d', num: true, render: (p) => formatGBP(p.revenue_30d) },
+                                            { label: 'Potential Margin %', key: 'profit_margin', num: true, render: (p) => (p.profit_margin != null ? `${Number(p.profit_margin).toFixed(2)}%` : '—') },
+                                            { label: 'Turnover', key: 'turnover', num: true, render: (p) => (p.turnover != null ? p.turnover : '—') },
+                                            { label: 'Sell-through %', key: 'sell_through', num: true, render: (p) => (p.sell_through != null ? `${p.sell_through}%` : '—') },
+                                        ]}
+                                    />
+                                </>
                             )}
                         </Body>
                     </Tile>

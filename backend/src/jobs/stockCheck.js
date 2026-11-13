@@ -31,7 +31,11 @@ async function runStockCheck() {
 }
 
 async function runStockCheckInner() {
-    const stockLevels = await shopify.getStockLevels();
+    const { items: stockLevels, retrieved_at } = await shopify.getStockLevels();
+
+    if (retrieved_at == null) {
+        throw new Error('Current inventory is unavailable.');
+    }
 
     // Index stock by item id and SKU so either can match a threshold row.
     const stockByKey = {};
@@ -76,11 +80,12 @@ async function runStockCheckInner() {
     const summary = {
         checked: thresholds.length,
         alerts_created: alertsCreated,
-        ran_at: new Date().toISOString()
+        ran_at: new Date().toISOString(),
+        ok: true
     };
 
     console.log(`[stock-check] checked ${summary.checked} SKUs, created ${alertsCreated} new alert(s)`);
-    lastRun = { ...summary, ok: true };
+    lastRun = { ...summary };
     return summary;
 }
 

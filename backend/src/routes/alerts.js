@@ -31,6 +31,13 @@ const checkRateLimit = rateLimit(
     'Stock check was run too recently. Please wait a minute and try again.'
 );
 
+async function getInventory() {
+    const latestStock = await shopify.getStockLevels();
+    if (latestStock.retrieved_at == null) throw new Error('Shopify inventory unavailable');
+    if (!Array.isArray(latestStock.items)) throw new Error('Unexpected inventory response');
+    return latestStock;
+}
+
 router.get('/', asyncRoute(async (req, res) => {
     const status = req.query.status;
 
@@ -42,27 +49,62 @@ router.get('/', asyncRoute(async (req, res) => {
         params = [status];
     }
 
-    const sql =
-        'SELECT ra.*, p.sku, p.name AS product_name, p.manufacturer_id, m.name AS manufacturer ' +
+    const result = await query(
+        'SELECT ra.*, ' +
+        '   p.sku, p.name AS product_name, p.shopify_inventory_item_id, p.manufacturer_id, ' +
+        '   m.name AS manufacturer, ' +
+        '   rt.threshold AS latest_threshold ' +
         'FROM reorder_alerts ra ' +
         'JOIN products p ON p.id = ra.product_id ' +
         'LEFT JOIN manufacturers m ON m.id = p.manufacturer_id ' +
+        'LEFT JOIN reorder_thresholds AS rt ON rt.product_id = p.id ' +
         whereClause + ' ' +
-        'ORDER BY ra.triggered_at DESC LIMIT 200';
+        'ORDER BY ra.triggered_at DESC LIMIT 200',
+        params);
 
-    const result = await query(sql, params);
+    let latestStock;
 
-    res.json({ alerts: result.rows });
+    try {
+        latestStock = await getInventory();
+    } catch(err) {
+        console.error(`Unable to get inventory: ${err.message}.`)
+        const alerts = result.rows.map((row) => ({ ...row, latest_stock: null }));
+        return res.status(200).json({
+            alerts: alerts,
+            inventory_status: 'unavailable',
+            retrieved_at: null
+        });
+    }
+
+    const alerts = result.rows.map((row) => {
+        const stockRow = latestStock.items.find((product) =>
+                // Follows existing convention in `routes/product.js:85`; does not guarantee ID-first selection.
+                (row.shopify_inventory_item_id && product.inventory_item_id === row.shopify_inventory_item_id) ||
+                product.sku === row.sku) ||
+            { stock_on_hand: null };
+
+        return { ...row, latest_stock: stockRow.stock_on_hand ?? null };
+    });
+
+    return res.status(200).json({
+        alerts: alerts,
+        inventory_status: 'available',
+        retrieved_at: latestStock.retrieved_at
+    });
 }));
 
 router.get('/:id/reorder-suggestion', asyncRoute(async (req, res) => {
     const alert_id = req.params.id;
 
     const requestedAlert = await query(
-        'SELECT ra.stock_level, ra.threshold, m.min_order_quantity, ra.product_id, p.sku ' +
+        'SELECT ra.stock_level, ra.product_id, ' +
+            'p.sku, p.shopify_inventory_item_id, ' +
+            'm.min_order_quantity, ' +
+            'rt.threshold ' +
         'FROM reorder_alerts as ra ' +
         'LEFT JOIN products AS p ON p.id = ra.product_id ' +
         'LEFT JOIN manufacturers AS m ON m.id = p.manufacturer_id ' +
+        'LEFT JOIN reorder_thresholds AS rt ON rt.product_id = p.id ' +
         'WHERE ra.id = $1',
         [alert_id]);
     const alert = requestedAlert.rows[0];
@@ -71,8 +113,27 @@ router.get('/:id/reorder-suggestion', asyncRoute(async (req, res) => {
         return res.status(404).json({ error: 'Alert not found.' });
     }
 
-    const stock = alert.stock_level;
+    let latestStock
+    try {
+        latestStock = await getInventory();
+    } catch (err) {
+        console.error(`Unable to suggest reorder quantity: ${err.message}.`)
+        return res.status(503).json({
+            error: 'Unable to suggest a reorder quantity because current inventory is unavailable.'
+        });
+    }
+
+    const stock = latestStock.items.find((product) =>
+        // Does not guarantee ID-first selection.
+        (alert.shopify_inventory_item_id &&
+            product.inventory_item_id === alert.shopify_inventory_item_id) ||
+        product.sku === alert.sku)?.stock_on_hand ?? null;
     const threshold = alert.threshold;
+
+    if (stock == null || threshold == null) {
+        return res.status(503).json({ error: 'A reorder suggestion is unavailable because current stock or ' +
+                                             'the configured threshold is missing.' });
+    }
 
     // Suggests by previous reorder alerts
     const reorder_history = await query(
@@ -295,8 +356,12 @@ router.delete('/:id', requireRole(...ALERT_DELETE_ROLES), asyncRoute(async (req,
 }));
 
 router.post('/check-now', checkRateLimit, asyncRoute(async (req, res) => {
-    const result = await runStockCheck();
-    res.json(result);
+    try {
+        const result = await runStockCheck();
+        res.json(result);
+    } catch (err) {
+        res.status(503).json({ error: 'Stock check could not be completed. Please try again.' });
+    }
 }));
 
 module.exports = router;
